@@ -1,84 +1,59 @@
 ---
 name: multi-agent-review
-description: Runs a full multi-specialist code review of changed TrashAnimal files using the frontend-reviewer, backend-reviewer, security-reviewer, testing-reviewer, and architecture-reviewer subagents — parallel specialist pass, then a sequential architecture pass with full context, then a rule-based synthesis into one prioritized report. Use when the user asks for a full/comprehensive review, a multi-agent review, or invokes /multi-agent-review, as opposed to a single ad hoc agent check.
+description: Runs a full multi-specialist code review of changed TrashAnimal files by executing the LangGraph pipeline in this folder (frontend, backend, security, testing, then architecture reviewers; finding verification; rule-based synthesis; human approval gate). Use when the user asks for a full/comprehensive review, a multi-agent review, or invokes /multi-agent-review, as opposed to a single ad hoc agent check.
 ---
 
 # Multi-Agent Review
 
-Orchestrates the five subagents in `.claude/agents/` (`frontend-reviewer`, `backend-reviewer`, `security-reviewer`, `testing-reviewer`, `architecture-reviewer`) into one review pass with consistent conflict resolution. Follow these steps in order.
+The orchestration lives in code (`review.py` + `review_graph/`), not in this file. Routing, the branch-safety checks, finding verification, severity synthesis and the approval gate are all deterministic Python; the reviewers are the agents in `.claude/agents/*.md`, run through the Claude Agent SDK. Your job here is to run it and relay the result.
 
-## 1. Determine scope
+## 1. Run it
 
-Default: `git diff main...HEAD` plus untracked files (`git status --porcelain`) to get the full set of changed files.
+From the repo root:
 
-If the user gave an argument (a PR number, "staged", "since <ref>", or a file/folder path), use that instead:
-- A PR number → `gh pr diff <number>`
-- "staged" → `git diff --staged`
-- "since <ref>" → `git diff <ref>...HEAD`
-- A path → treat as an explicit file list, skip the diff entirely
+```bash
+.claude/skills/multi-agent-review/.venv/Scripts/python .claude/skills/multi-agent-review/review.py [scope]
+```
 
-## 2. Route: select which agents apply
+Scope (pick from what the user asked; default is `main...HEAD` plus uncommitted/untracked files):
 
-Bucket the changed files and skip any agent with nothing to review:
-
-| Agent | Triggers on |
+| User asked for | Flag |
 |---|---|
-| `frontend-reviewer` | `TrashAnimal.Web/**/*.{ts,tsx,js,jsx,css}` |
-| `backend-reviewer` | `TrashAnimal/**/*.cs`, `TrashAnimal.Api/**/*.cs` (excluding test projects) |
-| `security-reviewer` | Any changed file, always included if the change set is non-empty |
-| `testing-reviewer` | Any changed file in a non-test project (assesses coverage), or any changed file inside `TrashAnimal.Tests`/`TrashAnimal.Api.Tests`/web test files (assesses quality) |
-| `architecture-reviewer` | Any changed `.cs`/`.ts`/`.tsx` file — always runs sequentially if any code (not docs-only) changed |
+| A PR | `--pr <number>` |
+| Staged changes | `--staged` |
+| Changes since a ref | `--since <ref>` |
+| Specific files/folders | `--paths <path> [<path> ...]` |
 
-If the change set is docs-only (`*.md`, no code), skip the whole review and say so — don't spin up agents for nothing.
+Optional: `--json-out <file>` for the structured report, `--max-budget-usd`, `--max-turns`, `--timeout`, `--attempts` to tune per-reviewer limits.
 
-## 3. Safety: verify reviewers didn't mutate git state
+The run prints `thread id: ...` on stderr. Keep it; it is the checkpoint key.
 
-Each of the five agent definitions in `.claude/agents/` already instructs itself not to run branch-mutating commands (`git checkout`, `git reset`, `git stash`, `git clean`, etc.) — that's the source of truth, don't re-inject it here. What this skill adds is an independent *check*, since an agent could still deviate from its own instructions and Bash is in its tool list:
+If the `.venv` folder is missing, set it up once (Python 3.14+):
 
-Before starting step 4, capture the current branch: `git branch --show-current`. After each phase (parallel and sequential) completes, run it again and confirm it's unchanged. If it changed, stop, tell the user immediately, and restore the original branch with `git checkout <original-branch>` (checkout alone doesn't discard commits, so this is safe) before continuing or reporting results.
+```bash
+cd .claude/skills/multi-agent-review
+python -m venv .venv
+.venv/Scripts/python -m pip install langgraph langgraph-checkpoint-sqlite claude-agent-sdk pydantic pytest
+```
 
-## 4. Parallel phase
+## 2. Handle the exit code
 
-In a single message, call the `Agent` tool once per selected agent from {`frontend-reviewer`, `backend-reviewer`, `security-reviewer`, `testing-reviewer`} (skip any not selected in step 2), each with `run_in_background: false` so results return before you continue. Give each agent:
-- The list of changed files relevant to its scope (not the full diff — let it `Read`/`Grep` the files itself for full context)
-- Instruction to report findings as: file, line, severity (critical/high/medium/low), one-sentence summary, suggested fix
+| Exit | Meaning | What to do |
+|---|---|---|
+| 0 | CLEAR, or REQUIRES APPROVAL that was approved | Relay the report |
+| 2 | BLOCK MERGE | Relay the report; lead with the block verdict (and the security gate line if present) |
+| 1 | REQUIRES APPROVAL and rejected | Relay the report |
+| 3 | Paused at the approval gate (no interactive terminal) | Show the user the high findings from the JSON on stdout, ask whether to approve, then re-run: `review.py --resume --thread-id <id> --decision approved` (or `rejected`) |
 
-Wait for all of them to return before moving on, then run the branch-unchanged check from step 3.
+If the run crashes or is interrupted, resume it without re-running finished reviewers: `review.py --resume --thread-id <id>`.
 
-## 5. Sequential phase
+## 3. Report
 
-If `architecture-reviewer` is selected, call it once, `run_in_background: false`, and include in its prompt:
-- The same changed-file list
-- A condensed summary of every finding from step 4 (agent name, file, severity, one-line summary) so it can reason with full context, per its own instructions to build on rather than repeat them
+Relay the markdown report: verdict first, then findings grouped by severity with the agents that raised each, then any reviews that did not complete and cost. Do not paste raw agent output; the report is already synthesized. If the calling context expects structured findings (for example `/code-review`), use `ReportFindings` with the `--json-out` file.
 
-Then run the branch-unchanged check from step 3 again.
+## Notes
 
-## 6. Synthesize
-
-Collect all findings from steps 4 and 5 and apply these rules, in order:
-
-**Rule 1 — Agreement escalates severity.** If two or more agents flag the same file+line (or same file+issue-type when line-level doesn't align) as related findings, bump the combined severity one level (e.g. two MEDIUMs → HIGH). Merge them into one finding attributed to both agents rather than listing duplicates.
-
-**Rule 2 — Security always wins.** Any CRITICAL from `security-reviewer` keeps CRITICAL severity regardless of what other agents said about the same issue. Never downgrade a security CRITICAL during synthesis.
-
-**Rule 3 — Cross-agent context.** When `backend-reviewer` and `frontend-reviewer` both touch the same concern (e.g. an API shape change), prefer the interpretation that accounts for both sides rather than treating them as independent — note the connection in the synthesized finding rather than reporting them separately.
-
-**Rule 4 — Priority matrix.** When agents disagree on severity for the *same* underlying issue, resolve using whichever agent has the higher weight for that issue type:
-
-| Issue type | Frontend | Backend | Security | Testing | Architecture |
-|---|---|---|---|---|---|
-| Security | 10 | 10 | 100 | 10 | 20 |
-| Performance | 30 | 50 | 5 | 10 | 30 |
-| Accessibility | 100 | 5 | 20 | 30 | 10 |
-| Maintainability | 20 | 20 | 10 | 20 | 100 |
-| Testing | 10 | 10 | 10 | 100 | 20 |
-
-**Rule 5 — Escalation triggers.** After the above:
-- Any CRITICAL from `security-reviewer` → **BLOCK MERGE**, call it out explicitly at the top of the report
-- Any other CRITICAL → **BLOCK MERGE**
-- Any HIGH → **REQUIRES APPROVAL** before merge
-- MEDIUM/LOW → include in report, no gate
-
-## 7. Report
-
-Produce one prioritized report: escalation verdict first (block / requires approval / clear), then findings grouped by severity (not by agent), each showing which agent(s) raised it. If the calling context expects structured findings (e.g. this was invoked as part of `/code-review`), use `ReportFindings`; otherwise a markdown summary is fine. Don't re-print each agent's raw output verbatim — the value of this skill is the synthesis, not a transcript dump.
+- Reviewers run read-only: Edit/Write and mutating git commands are disallowed, and Bash is narrowed to `git diff/show/log/status/rev-parse` and `gh pr diff/view`. The pipeline also checks the checked-out branch after each phase and restores it if it changed.
+- A reviewer that fails, times out or exceeds its budget is reported as an incomplete review; a failed security review blocks the merge.
+- Tests: `.claude/skills/multi-agent-review/.venv/Scripts/python -m pytest` from this folder.
+- The previous prose-driven procedure is kept in `legacy-skill-procedure.md` as a fallback if the Python pipeline cannot run.

@@ -429,3 +429,8 @@ FodyWeavers.xsd
 *.msp
 
 _PersonalNotes/
+# multi-agent-review LangGraph checkpoints
+.claude/review-checkpoints.sqlite*
+
+# Python Virtual Environments
+*.venv
