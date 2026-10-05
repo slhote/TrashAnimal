@@ -33,5 +33,16 @@ export function useFullscreenLandscape() {
     }
   }, []);
 
-  return { enterFullscreen, isFullscreen, supportsFullscreen };
+  const exitFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+      setIsFullscreen(false);
+    } catch (error) {
+      console.error('Exiting fullscreen failed:', error);
+    }
+  }, []);
+
+  return { enterFullscreen, exitFullscreen, isFullscreen, supportsFullscreen };
 }

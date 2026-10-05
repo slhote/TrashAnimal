@@ -3,8 +3,6 @@ import type { CardName } from '../../api/types';
 import { CARD_IMAGE_BY_NAME } from '../../pages/GameBoard/assetMaps';
 import CardCountBadge from './CardCountBadge';
 
-const CARDS_PER_ROW = 3;
-
 interface PickableCard {
   cardId: string;
   name: CardName;
@@ -45,10 +43,6 @@ function GroupedCardPicker({
   const totalSelected = Object.values(selected).reduce((sum, n) => sum + n, 0);
 
   const entries = [...groupedIds.entries()];
-  const rows: (typeof entries)[] = [];
-  for (let i = 0; i < entries.length; i += CARDS_PER_ROW) {
-    rows.push(entries.slice(i, i + CARDS_PER_ROW));
-  }
 
   function increment(name: CardName) {
     const groupSize = groupedIds.get(name)?.length ?? 0;
@@ -73,60 +67,53 @@ function GroupedCardPicker({
 
   return (
     <div className="flex flex-col gap-3">
-      <div
-        className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto pb-2 pr-2 phone-landscape:max-h-[calc(100vh-220px)] phone-landscape:gap-2"
-        style={{ scrollSnapType: 'y mandatory' }}
-      >
-        {rows.map((row, rowIndex) => (
-          <div key={rowIndex} className="flex justify-center gap-4 phone-landscape:gap-2" style={{ scrollSnapAlign: 'start' }}>
-            {row.map(([name, ids]) => {
-              const count = selected[name] ?? 0;
-              const canIncrement = count < ids.length && totalSelected < max;
-              return (
-                <div key={name} className="flex flex-col items-center gap-1">
-                  <CardCountBadge count={ids.length} size="small">
-                    <img
-                      src={CARD_IMAGE_BY_NAME[name]}
-                      alt={name}
-                      className="h-[120px] w-[86px] rounded-lg object-cover phone-landscape:h-[72px] phone-landscape:w-[52px]"
-                      style={{ opacity: 1 }}
-                    />
-                  </CardCountBadge>
-                  <p className="text-[11px] font-medium phone-landscape:text-[10px]" style={{ color: 'var(--gb-text-primary)' }}>
-                    {name}
-                  </p>
-                  <div className="-mt-1 flex flex-col items-center gap-1">
-                    <p className="text-[10px]" style={{ color: 'var(--gb-text-label)' }}>
-                      {count} / {ids.length}
-                    </p>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => decrement(name)}
-                        disabled={isPending || count <= 0}
-                        aria-label={`Remove ${name}`}
-                        className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold disabled:opacity-40 phone-landscape:h-6 phone-landscape:w-6"
-                        style={{ background: 'rgba(255,255,255,.22)', border: '1.5px solid rgba(255,255,255,.5)', color: 'var(--gb-text-primary)' }}
-                      >
-                        −
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => increment(name)}
-                        disabled={isPending || !canIncrement}
-                        aria-label={`Add ${name}`}
-                        className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold disabled:opacity-40 phone-landscape:h-6 phone-landscape:w-6"
-                        style={{ background: 'rgba(255,255,255,.22)', border: '1.5px solid rgba(255,255,255,.5)', color: 'var(--gb-text-primary)' }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
+      <div className="grid max-h-[60vh] grid-cols-3 gap-4 overflow-y-auto pb-2 pr-2 phone-landscape:max-h-[calc(100vh-220px)] phone-landscape:gap-2">
+        {entries.map(([name, ids]) => {
+          const count = selected[name] ?? 0;
+          const canIncrement = count < ids.length && totalSelected < max;
+          return (
+            <div key={name} className="flex flex-col items-center gap-1">
+              <CardCountBadge count={ids.length} size="small">
+                <img
+                  src={CARD_IMAGE_BY_NAME[name]}
+                  alt={name}
+                  className="h-[120px] w-[86px] rounded-lg object-cover phone-landscape:h-[72px] phone-landscape:w-[52px]"
+                  style={{ opacity: 1 }}
+                />
+              </CardCountBadge>
+              <p className="text-[11px] font-medium phone-landscape:text-[10px]" style={{ color: 'var(--gb-text-primary)' }}>
+                {name}
+              </p>
+              <div className="-mt-1 flex flex-col items-center gap-1">
+                <p className="text-[10px]" style={{ color: 'var(--gb-text-label)' }}>
+                  {count} / {ids.length}
+                </p>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => decrement(name)}
+                    disabled={isPending || count <= 0}
+                    aria-label={`Remove ${name}`}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold disabled:opacity-40 phone-landscape:h-6 phone-landscape:w-6"
+                    style={{ background: 'rgba(255,255,255,.22)', border: '1.5px solid rgba(255,255,255,.5)', color: 'var(--gb-text-primary)' }}
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => increment(name)}
+                    disabled={isPending || !canIncrement}
+                    aria-label={`Add ${name}`}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold disabled:opacity-40 phone-landscape:h-6 phone-landscape:w-6"
+                    style={{ background: 'rgba(255,255,255,.22)', border: '1.5px solid rgba(255,255,255,.5)', color: 'var(--gb-text-primary)' }}
+                  >
+                    +
+                  </button>
                 </div>
-              );
-            })}
-          </div>
-        ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
       <button
         type="button"

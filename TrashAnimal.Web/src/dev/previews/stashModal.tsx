@@ -4,9 +4,8 @@ import StashModal from '../../components/gameboard/StashModal';
 
 const ALL_CARD_NAMES: CardName[] = ['Blammo', 'Nanners', 'Feesh', 'Shiny', 'Yumyum', 'MmmPie', 'Kitteh', 'Doggo'];
 
-/** Boundary card-count states worth screenshotting for this component: none, a single card,
- * exactly one full row, a partial second row, and the max possible (one of every distinct
- * CardName, filling every row) — see e2e/visual/stash-modal.spec.ts for the automated version. */
+/** Boundary card-count states worth checking for this component: none, a single card, exactly
+ * one full row, a partial second row, and the max possible (one of every distinct CardName). */
 function cardsFor(scenario: string | null) {
   switch (scenario) {
     case 'empty':

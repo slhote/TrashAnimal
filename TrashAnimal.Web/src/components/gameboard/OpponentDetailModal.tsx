@@ -4,8 +4,6 @@ import { CARD_IMAGE_BY_NAME, opponentColorForSeat } from '../../pages/GameBoard/
 import CardCountBadge from './CardCountBadge';
 import Modal from './Modal';
 
-const CARDS_PER_ROW = 3;
-
 interface OpponentDetailModalProps {
   opponents: OpponentSummaryView[];
   selectedIndex: number;
@@ -21,10 +19,6 @@ function OpponentDetailModal({ opponents, selectedIndex, onSelectIndex, onClose 
     grouped.set(card.name, (grouped.get(card.name) ?? 0) + 1);
   }
   const entries = [...grouped.entries()].sort((a, b) => b[1] - a[1]);
-  const rows: (typeof entries)[] = [];
-  for (let i = 0; i < entries.length; i += CARDS_PER_ROW) {
-    rows.push(entries.slice(i, i + CARDS_PER_ROW));
-  }
 
   const hasMultipleOpponents = opponents.length > 1;
 
@@ -95,22 +89,15 @@ function OpponentDetailModal({ opponents, selectedIndex, onSelectIndex, onClose 
             {opponent.stashFaceUpCards.length} TOTAL
           </span>
         </div>
-        <div
-          className="mt-3 flex max-h-[60vh] flex-col gap-3 overflow-y-auto pb-2 pr-2 phone-landscape:max-h-[calc(100vh-260px)]"
-          style={{ scrollSnapType: 'y mandatory' }}
-        >
-          {rows.map((row, rowIndex) => (
-            <div key={rowIndex} className="flex gap-3" style={{ scrollSnapAlign: 'start' }}>
-              {row.map(([name, count]) => (
-                <CardCountBadge key={name} count={count} size="medium" includeResponsive={false}>
-                  <img
-                    src={CARD_IMAGE_BY_NAME[name as keyof typeof CARD_IMAGE_BY_NAME]}
-                    alt={name}
-                    className="h-[120px] w-[86px] rounded-lg object-cover"
-                  />
-                </CardCountBadge>
-              ))}
-            </div>
+        <div className="mt-3 grid max-h-[60vh] grid-cols-3 gap-3 overflow-y-auto pb-2 pr-2 phone-landscape:max-h-[calc(100vh-260px)]">
+          {entries.map(([name, count]) => (
+            <CardCountBadge key={name} count={count} size="medium" includeResponsive={false}>
+              <img
+                src={CARD_IMAGE_BY_NAME[name as keyof typeof CARD_IMAGE_BY_NAME]}
+                alt={name}
+                className="h-[120px] w-[86px] rounded-lg object-cover"
+              />
+            </CardCountBadge>
           ))}
           {entries.length === 0 && <p style={{ color: 'var(--gb-text-label)' }}>Nothing here yet.</p>}
         </div>

@@ -1,23 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useTheme } from '../../hooks/useTheme';
+import { useIsDarkResolved } from '../../hooks/useIsDarkResolved';
 import { DAY_BACKGROUND_IMAGE, NIGHT_BACKGROUND_IMAGE } from '../../pages/GameBoard/assetMaps';
-
-/** Resolves 'system' against the OS media query so day/night can be a plain boolean. */
-function useIsDarkResolved(): boolean {
-  const { theme } = useTheme();
-  const [systemPrefersDark, setSystemPrefersDark] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches,
-  );
-
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-color-scheme: dark)');
-    const listener = (event: MediaQueryListEvent) => setSystemPrefersDark(event.matches);
-    query.addEventListener('change', listener);
-    return () => query.removeEventListener('change', listener);
-  }, []);
-
-  return theme === 'dark' || (theme === 'system' && systemPrefersDark);
-}
 
 // On first render, only fetch the background matching the current theme.
 // The other variant loads lazily on first theme change, preserving crossfade for every toggle after that.

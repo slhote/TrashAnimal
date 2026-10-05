@@ -1,10 +1,11 @@
 import { useTheme } from '../../hooks/useTheme';
+import { useIsDarkResolved } from '../../hooks/useIsDarkResolved';
 
 /** Sun/moon toggle for the game board, cycling only light/dark (no 'system' step here — the
  * board needs an explicit day/night state to show, unlike the site-wide ThemeToggle). */
 function GameBoardThemeToggle() {
-  const { theme, setTheme } = useTheme();
-  const isDark = theme === 'dark';
+  const { setTheme } = useTheme();
+  const isDark = useIsDarkResolved();
 
   return (
     <button

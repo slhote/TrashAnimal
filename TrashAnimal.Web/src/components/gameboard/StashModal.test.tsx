@@ -28,7 +28,7 @@ describe('StashModal', () => {
     expect(screen.getByText('Nothing here yet.')).toBeInTheDocument();
   });
 
-  it('splits card groups into scroll-snapped rows of 3', () => {
+  it('lays out card groups in a 3-column grid regardless of count', () => {
     render(
       <StashModal
         title="Your stash"
@@ -44,10 +44,10 @@ describe('StashModal', () => {
 
     const images = screen.getAllByRole('img');
     expect(images).toHaveLength(4);
-    const rows = images.map((img) => img.closest('[style*="scroll-snap-align"]'));
-    expect(new Set(rows).size).toBe(2);
-    for (const row of rows) {
-      expect(row).toHaveStyle({ scrollSnapAlign: 'start' });
+    const grid = images[0].closest('.grid');
+    expect(grid).toHaveClass('grid-cols-3');
+    for (const img of images) {
+      expect(img.closest('.grid')).toBe(grid);
     }
   });
 });

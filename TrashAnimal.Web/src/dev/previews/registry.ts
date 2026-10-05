@@ -7,6 +7,10 @@ import { lazy } from 'react';
  * values; keep them documented in a comment at the top of the preview file. */
 export const DEV_PREVIEWS = {
   'stash-modal': lazy(() => import('./stashModal')),
+  'grouped-card-picker': lazy(() => import('./groupedCardPicker')),
+  'opponent-detail-modal': lazy(() => import('./opponentDetailModal')),
+  'player-stash': lazy(() => import('./playerStash')),
+  'board-chrome': lazy(() => import('./boardChrome')),
 } as const;
 
 export type DevPreviewKey = keyof typeof DEV_PREVIEWS;

@@ -6,12 +6,12 @@ import { useGameSignalR } from '../hooks/useGameSignalR'
 import { useGameLogAnnouncements } from '../hooks/useGameLogAnnouncements'
 import { useSubmitCommand } from '../hooks/useSubmitCommand'
 import { useIsPhoneLandscape, useIsMobilePortrait } from '../hooks/useLandscapeBreakpoint'
-import { useFullscreenLandscape } from '../hooks/useFullscreenLandscape'
 import { useToast } from '../components/Toast/useToast'
 import type { GameAction, HandCardView, TokenAction } from '../api/types'
 import { TOKEN_IMAGE_BY_ACTION } from './GameBoard/assetMaps'
 import DayNightBackground from '../components/gameboard/DayNightBackground'
 import GameBoardThemeToggle from '../components/gameboard/GameBoardThemeToggle'
+import FullscreenToggleButton from '../components/gameboard/FullscreenToggleButton'
 import TurnIndicator from '../components/gameboard/TurnIndicator'
 import PhaseToggle from '../components/gameboard/PhaseToggle'
 import OpponentRail from '../components/gameboard/OpponentRail'
@@ -42,7 +42,6 @@ function GameBoardPage() {
   const { showToast } = useToast()
   const isPhoneLandscape = useIsPhoneLandscape()
   const isMobilePortrait = useIsMobilePortrait()
-  useFullscreenLandscape()
 
   const [victimPickerMode, setVictimPickerMode] = useState<VictimPickerMode>(null)
   const [feeshPickerOpen, setFeeshPickerOpen] = useState(false)
@@ -242,6 +241,7 @@ function GameBoardPage() {
         }
       >
         <DayNightBackground />
+        <FullscreenToggleButton />
         <GameBoardThemeToggle />
         <GameLogButton ref={gameLogButtonRef} onClick={() => setIsGameLogOpen(true)} />
         <TurnIndicator currentPlayerName={gameView.currentPlayerName} isLocalPlayerTurn={isLocalPlayerTurn} state={gameView.state} />

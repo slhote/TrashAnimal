@@ -65,7 +65,7 @@ function CardCountBadge({ count, size = 'medium', color = 'gold', includeRespons
     <div className="relative w-fit">
       {children}
       <span
-        className={`absolute -bottom-2 -right-2 flex items-center justify-center rounded-full border-2 font-bold ${sizeClasses.base} ${includeResponsive ? sizeClasses.responsive : ''}`}
+        className={`pointer-events-none absolute -bottom-2 -right-2 flex items-center justify-center rounded-full border-2 font-bold ${sizeClasses.base} ${includeResponsive ? sizeClasses.responsive : ''}`}
         style={colorStyles}
       >
         {count}
