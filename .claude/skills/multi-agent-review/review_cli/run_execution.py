@@ -30,7 +30,11 @@ def ask_for_decision(interrupt_payload: dict, interactive: bool, read_line: Call
         print(f"  - {finding}", file=sys.stderr)
     for agent in interrupt_payload.get("incomplete_reviews", []):
         print(f"  - review did not complete: {agent}", file=sys.stderr)
-    answer = read_line("Approve? [y/N] ").strip().lower()
+    try:
+        answer = read_line("Approve? [y/N] ").strip().lower()
+    except EOFError:
+        return None
+
     return "approved" if answer in {"y", "yes"} else "rejected"
 
 

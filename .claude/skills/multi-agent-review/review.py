@@ -8,6 +8,7 @@ from pathlib import Path
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from review_cli.arguments import parse_arguments, scope_from_arguments, validate_arguments
+from review_cli.console import stdin_is_console
 from review_cli.exit_codes import EXIT_PAUSED, EXIT_USAGE, exit_code_for
 from review_cli.run_execution import Completed, Paused, execute_run
 from review_cli.run_planning import ExitRequested, plan_run
@@ -60,7 +61,7 @@ async def run_review(args) -> int:
         session = ReviewSession(
             graph=build_graph(dependencies, checkpointer),
             registry=ThreadRegistry(checkpoint_path),
-            interactive=sys.stdin.isatty(),
+            interactive=stdin_is_console(),
         )
         try:
             plan = await plan_run(args, scope_args, label, session)
