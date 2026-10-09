@@ -15,6 +15,7 @@ from review_graph.git_client import GitClient
 from review_graph.graph import GraphDependencies, build_graph
 from review_graph.runner import RunLimits, SdkAgentRunner
 from review_graph.state import ARCHITECTURE_AGENT, PHASE_ONE_AGENTS
+from review_graph.thread_registry import ThreadRegistry
 
 EXIT_CLEAR, EXIT_REJECTED, EXIT_BLOCKED, EXIT_PAUSED = 0, 1, 2, 3
 
@@ -86,6 +87,7 @@ async def run_review(args: argparse.Namespace) -> int:
     print(f"thread id: {thread_id}", file=sys.stderr)
 
     checkpoint_path = repo_root / ".claude" / "review-checkpoints.sqlite"
+    registry = ThreadRegistry(checkpoint_path)
     async with AsyncSqliteSaver.from_conn_string(str(checkpoint_path)) as checkpointer:
         graph = build_graph(dependencies, checkpointer)
         config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 60}
@@ -93,21 +95,36 @@ async def run_review(args: argparse.Namespace) -> int:
         if args.resume:
             graph_input = Command(resume=args.decision) if args.decision else None
         else:
-            graph_input = {"scope_args": scope_args}
-        result = await graph.ainvoke(graph_input, config)
-
-        while result.get("__interrupt__"):
-            payload = result["__interrupt__"][0].value
-            decision = await asyncio.to_thread(ask_for_decision, payload)
-            if decision is None:
+            if (await graph.aget_state(config)).next:
                 print(
-                    "Paused: approval needed. Re-run with: "
-                    f"--resume --thread-id {thread_id} --decision approved|rejected",
+                    f"warning: thread {thread_id} has an unfinished review; starting over discards it "
+                    f"(use --resume --thread-id {thread_id} to continue it instead)",
                     file=sys.stderr,
                 )
-                print(json.dumps({"paused": True, "thread_id": thread_id, **payload}, indent=2))
-                return EXIT_PAUSED
-            result = await graph.ainvoke(Command(resume=decision), config)
+            graph_input = {"scope_args": scope_args}
+
+        # running_since stays set for the whole stretch this process owns the thread, including the
+        # approval prompt, so another terminal never sees a thread we are still handling as resumable.
+        registry.begin(thread_id, label, fresh=not args.resume)
+        try:
+            result = await graph.ainvoke(graph_input, config)
+
+            while result.get("__interrupt__"):
+                payload = result["__interrupt__"][0].value
+                decision = await asyncio.to_thread(ask_for_decision, payload)
+                if decision is None:
+                    print(
+                        "Paused: approval needed. Re-run with: "
+                        f"--resume --thread-id {thread_id} --decision approved|rejected",
+                        file=sys.stderr,
+                    )
+                    print(json.dumps({"paused": True, "thread_id": thread_id, **payload}, indent=2))
+                    return EXIT_PAUSED
+
+                result = await graph.ainvoke(Command(resume=decision), config)
+            registry.remove(thread_id)
+        finally:
+            registry.mark_idle(thread_id)
 
     print(result["report_markdown"])
     if args.json_out:

@@ -9,6 +9,7 @@ from .nodes.approval import approval_node
 from .nodes.architecture import make_architecture_node
 from .nodes.branch_guard import make_branch_guard_nodes
 from .nodes.report import report_node
+from .nodes.reset_run import reset_run_node
 from .nodes.reviewer import make_reviewer_node
 from .nodes.route import fan_out_to_reviewers, route_node
 from .nodes.scope import make_scope_node
@@ -53,6 +54,7 @@ def build_graph(deps: GraphDependencies, checkpointer=None):
     snapshot_branch, verify_branch, restore_branch = make_branch_guard_nodes(deps.git)
 
     graph = StateGraph(ReviewState)
+    graph.add_node("reset_run", reset_run_node)
     graph.add_node("snapshot_branch", snapshot_branch)
     graph.add_node("scope", make_scope_node(deps.git))
     graph.add_node("route", route_node)
@@ -66,7 +68,8 @@ def build_graph(deps: GraphDependencies, checkpointer=None):
     graph.add_node("approval", approval_node)
     graph.add_node("report", report_node)
 
-    graph.add_edge(START, "snapshot_branch")
+    graph.add_edge(START, "reset_run")
+    graph.add_edge("reset_run", "snapshot_branch")
     graph.add_edge("snapshot_branch", "scope")
     graph.add_edge("scope", "route")
     graph.add_conditional_edges("route", fan_out_to_reviewers, ["reviewer", "report"])

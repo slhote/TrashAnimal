@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import operator
 from typing import Annotated, Literal, Optional, TypedDict
 
 from pydantic import BaseModel, Field
@@ -80,6 +79,38 @@ class Usage(TypedDict):
     turns: int
 
 
+RESET = "__reset__"
+
+
+def accumulate(existing: list | None, update: list) -> list:
+    """Append-only reducer, except an update that starts with RESET replaces the channel."""
+    if update and update[0] == RESET:
+        return list(update[1:])
+    return (existing or []) + update
+
+
+def fresh_run_state() -> dict:
+    """Per-run state a new invocation must not inherit from an earlier run on the same thread."""
+    return {
+        "findings": [RESET],
+        "failures": [RESET],
+        "usage": [RESET],
+        "warnings": [RESET],
+        "verified_findings": [],
+        "dropped_findings": [],
+        "merged_findings": [],
+        "incomplete_reviews": [],
+        "security_block": False,
+        "verdict": "CLEAR",
+        "approval_decision": "",
+        "report_markdown": "",
+        "report_json": {},
+        "architecture_done": False,
+        "branch_changed": False,
+        "current_ref": "",
+    }
+
+
 class ReviewState(TypedDict, total=False):
     scope_args: dict
     repo_root: str
@@ -92,10 +123,10 @@ class ReviewState(TypedDict, total=False):
     architecture_done: bool
     original_ref: str
     branch_changed: bool
-    findings: Annotated[list[Finding], operator.add]
-    failures: Annotated[list[Failure], operator.add]
-    usage: Annotated[list[Usage], operator.add]
-    warnings: Annotated[list[str], operator.add]
+    findings: Annotated[list[Finding], accumulate]
+    failures: Annotated[list[Failure], accumulate]
+    usage: Annotated[list[Usage], accumulate]
+    warnings: Annotated[list[str], accumulate]
     current_ref: str
     verified_findings: list[Finding]
     dropped_findings: list[dict]

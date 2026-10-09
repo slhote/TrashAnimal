@@ -26,7 +26,7 @@ Scope (pick from what the user asked; default is `main...HEAD` plus uncommitted/
 
 Optional: `--json-out <file>` for the structured report, `--max-budget-usd`, `--max-turns`, `--timeout`, `--attempts` to tune per-reviewer limits.
 
-The run prints `thread id: ...` on stderr. Keep it; it is the checkpoint key.
+The run prints `thread id: ...` on stderr. Keep it; it is the checkpoint key. Passing a stable `--thread-id` (e.g. `pr-53`) to a new run (without `--resume`) starts clean: findings, failures, usage, warnings and verdict from earlier runs on that thread are discarded. `--resume` continues the paused run instead.
 
 If the `.venv` folder is missing, set it up once (Python 3.14+):
 
