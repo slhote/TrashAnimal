@@ -12,7 +12,7 @@ The orchestration lives in code (`review.py` + `review_graph/`), not in this fil
 From the repo root:
 
 ```bash
-.claude/skills/multi-agent-review/.venv/Scripts/python .claude/skills/multi-agent-review/review.py [scope]
+uv run --project .claude/skills/multi-agent-review python .claude/skills/multi-agent-review/review.py [scope]
 ```
 
 Scope (pick from what the user asked; default is `main...HEAD` plus uncommitted/untracked files):
@@ -29,12 +29,11 @@ Optional: `--json-out <file>` for the structured report, `--max-budget-usd`, `--
 
 The run prints `thread id: ...` on stderr. Keep it; it is the checkpoint key. Passing a stable `--thread-id` (e.g. `pr-53`) to a new run (without `--resume`) starts clean: findings, failures, usage, warnings and verdict from earlier runs on that thread are discarded. `--resume` continues the paused run instead.
 
-If the `.venv` folder is missing, set it up once (Python 3.14+):
+If the `.venv` folder is missing, set it up once with [uv](https://docs.astral.sh/uv/) (Python 3.14+):
 
 ```bash
 cd .claude/skills/multi-agent-review
-python -m venv .venv
-.venv/Scripts/python -m pip install langgraph langgraph-checkpoint-sqlite claude-agent-sdk pydantic pytest
+uv sync --extra test
 ```
 
 ## 2. Handle the exit code
