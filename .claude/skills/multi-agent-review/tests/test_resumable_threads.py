@@ -17,13 +17,31 @@ def registry(tmp_path):
 def snapshots(**next_nodes_by_thread):
     async def get_state(thread_id):
         pending, verdict = next_nodes_by_thread[thread_id]
-        return SimpleNamespace(next=pending, values={"verdict": verdict})
+        return SimpleNamespace(next=pending, values={"verdict": verdict, "scope_args": {"kind": "pr", "value": 1}})
 
     return get_state
 
 
-def find(registry, get_state, alive=False):
+def search(registry, get_state, alive=False):
     return asyncio.run(find_resumable(registry, get_state, is_alive=lambda pid, since: alive))
+
+
+def find(registry, get_state, alive=False):
+    return search(registry, get_state, alive).threads
+
+
+def test_scope_args_come_from_the_saved_state(registry):
+    idle_thread(registry, "pr-1")
+    [thread] = find(registry, snapshots(**{"pr-1": (("reviewer",), None)}))
+    assert thread.scope_args == {"kind": "pr", "value": 1}
+
+
+def test_live_owned_threads_are_counted_as_running_elsewhere(registry):
+    registry.begin("busy", "busy", fresh=True)
+    idle_thread(registry, "waiting")
+    found = search(registry, snapshots(waiting=(("approval",), None)), alive=True)
+    assert found.running_elsewhere == 1
+    assert [thread.thread_id for thread in found.threads] == ["waiting"]
 
 
 def idle_thread(registry, thread_id):
