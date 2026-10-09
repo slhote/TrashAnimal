@@ -1,4 +1,7 @@
 import asyncio
+from unittest.mock import patch
+
+import pytest
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -7,6 +10,7 @@ from langgraph.types import Command
 from conftest import FakeGit, FakeRunner, reviewer_finding
 from review_graph.graph import GraphDependencies, build_graph
 from review_graph.runner import RunLimits
+from review_graph.state import RESET, accumulate, fresh_run_state
 
 CS_HUNKS = {"TrashAnimal/A.cs": [(1, 100)]}
 LIMITS = RunLimits(max_attempts=1)
@@ -75,6 +79,114 @@ def test_findings_outside_the_diff_are_dropped_before_synthesis(specs):
     runner = FakeRunner({"backend-reviewer": [reviewer_finding(file="Elsewhere.cs", severity="medium")]})
     result = invoke(make_graph(specs, runner, FakeGit(CS_HUNKS)), START)
     assert result["merged_findings"] == [] and len(result["dropped_findings"]) == 1
+
+
+def test_accumulate_appends_and_reset_replaces():
+    assert accumulate(None, [1]) == [1]
+    assert accumulate([1], [2]) == [1, 2]
+    assert accumulate([1, 2], [RESET]) == []
+    assert accumulate([1, 2], [RESET, 3]) == [3]
+
+
+def test_rerun_on_same_thread_does_not_accumulate_state(specs):
+    runner = FakeRunner({"backend-reviewer": [reviewer_finding(severity="medium")]})
+    graph = make_graph(specs, runner, FakeGit(CS_HUNKS))
+    first = invoke(graph, START, "pr-53")
+    second = invoke(graph, START, "pr-53")
+    assert len(second["findings"]) == len(first["findings"]) == 1
+    assert len(second["usage"]) == len(first["usage"])
+    assert len(second["merged_findings"]) == 1
+
+
+def test_stale_failure_does_not_change_next_run_verdict(specs):
+    git, saver = FakeGit(CS_HUNKS), MemorySaver()
+    failing = FakeRunner(failing={"security-reviewer"})
+    assert invoke(make_graph(specs, failing, git, saver), START, "pr-53")["verdict"] == "BLOCK_MERGE"
+    result = invoke(make_graph(specs, FakeRunner(), git, saver), START, "pr-53")
+    assert result["verdict"] == "CLEAR" and result["failures"] == [] and result["incomplete_reviews"] == []
+
+
+def test_fresh_run_after_pause_does_not_inherit_approval_state(specs):
+    runner = FakeRunner({"backend-reviewer": [reviewer_finding(severity="high", summary="real")]})
+    graph = make_graph(specs, runner, FakeGit(CS_HUNKS))
+    assert invoke(graph, START, "pr-53")["__interrupt__"]
+    final = invoke(graph, Command(resume="approved"), "pr-53")
+    assert final["approval_decision"] == "approved"
+    again = invoke(graph, START, "pr-53")
+    assert again["__interrupt__"] and again.get("approval_decision", "") == ""
+
+
+def test_resume_does_not_reset_run_state_and_reset_runs_once_per_fresh_invoke(specs):
+    resets = []
+    runner = FakeRunner({"backend-reviewer": [reviewer_finding(severity="high", summary="real")]})
+    with patch("review_graph.graph.reset_run_node", side_effect=lambda s: resets.append(1) or fresh_run_state()):
+        graph = make_graph(specs, runner, FakeGit(CS_HUNKS))
+        paused = invoke(graph, START)
+        counts = (len(paused["findings"]), len(paused["usage"]))
+        final = invoke(graph, Command(resume="approved"))
+    assert (len(final["findings"]), len(final["usage"])) == counts
+    assert resets == [1]
+
+
+class SimulatedProcessKill(BaseException):
+    """Not an Exception, so the retry wrapper cannot swallow it: models the process dying."""
+
+
+class KillingRunner(FakeRunner):
+    def __init__(self, killed_agent, findings_by_agent=None):
+        super().__init__(findings_by_agent)
+        self.killed_agent = killed_agent
+
+    async def run(self, spec, prompt, output_model, limits, cwd):
+        if spec.name == self.killed_agent:
+            await asyncio.sleep(0.05)
+            raise SimulatedProcessKill()
+        return await super().run(spec, prompt, output_model, limits, cwd)
+
+
+def test_killed_mid_reviewer_step_resume_reruns_only_unfinished_reviewers(specs):
+    saver = MemorySaver()
+    findings = {"backend-reviewer": [reviewer_finding(severity="medium", summary="kept across the kill")]}
+    killed = KillingRunner("security-reviewer", findings)
+    with pytest.raises(SimulatedProcessKill):
+        invoke(make_graph(specs, killed, FakeGit(CS_HUNKS), saver), START, "pr-9")
+    assert {"backend-reviewer", "testing-reviewer"} <= set(killed.calls)
+
+    resumed = FakeRunner()
+    result = invoke(make_graph(specs, resumed, FakeGit(CS_HUNKS), saver), None, "pr-9")
+
+    assert "security-reviewer" in resumed.calls
+    assert "backend-reviewer" not in resumed.calls and "testing-reviewer" not in resumed.calls
+    assert [f["summary"] for f in result["findings"]] == ["kept across the kill"]
+    assert result["verdict"] == "CLEAR"
+
+
+def test_real_graph_snapshots_report_what_find_resumable_relies_on(specs):
+    async def scenario():
+        saver = MemorySaver()
+        config = {"configurable": {"thread_id": "pr-7"}}
+        paused_graph = make_graph(
+            specs, FakeRunner({"backend-reviewer": [reviewer_finding(severity="high")]}), FakeGit(CS_HUNKS), saver
+        )
+        await paused_graph.ainvoke(START, config)
+        paused = await paused_graph.aget_state(config)
+
+        await paused_graph.ainvoke(Command(resume="approved"), config)
+        finished = await paused_graph.aget_state(config)
+
+        crash_config = {"configurable": {"thread_id": "pr-8"}}
+        crashed_graph = make_graph(specs, KillingRunner("security-reviewer"), FakeGit(CS_HUNKS), saver)
+        with pytest.raises(SimulatedProcessKill):
+            await crashed_graph.ainvoke(START, crash_config)
+        crashed = await crashed_graph.aget_state(crash_config)
+        unknown = await crashed_graph.aget_state({"configurable": {"thread_id": "never-ran"}})
+        return paused, finished, crashed, unknown
+
+    paused, finished, crashed, unknown = asyncio.run(scenario())
+    assert paused.next == ("approval",) and paused.values["verdict"] == "REQUIRES_APPROVAL"
+    assert finished.next == ()
+    assert crashed.next and "approval" not in crashed.next
+    assert unknown.next == ()
 
 
 def test_checkpoint_survives_a_new_process_and_reviewers_are_not_rerun(specs, tmp_path):
